@@ -4,6 +4,10 @@ const User = require('../models/User');
 const router = express.Router();
 
 // Register User
+router.get('/register', (req, res) => {
+    res.json({ msg: 'This is the Register endpoint. Please use POST request with username, email, and password.' });
+});
+
 router.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
 
@@ -56,6 +60,10 @@ router.post('/register', async (req, res) => {
 });
 
 // Login User
+router.get('/login', (req, res) => {
+    res.json({ msg: 'This is the Login endpoint. Please use POST request with email and password.' });
+});
+
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 

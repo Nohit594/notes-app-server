@@ -1,118 +1,42 @@
-const express = require('express');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const router = express.Router();
 
-// Register User
-router.get('/register', (req, res) => {
-    res.json({ msg: 'This is the Register endpoint. Please use POST request with username, email, and password.' });
-});
+const auth = async (req, res, next) => {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
 
-router.post('/register', async (req, res) => {
-    const { username, email, password } = req.body;
-
-    try {
-        // Check if user exists
-        let user = await User.findOne({ $or: [{ email }, { username }] });
-        if (user) {
-            return res.status(400).json({ message: 'User already exists' });
-        }
-
-        // Create new user
-        user = new User({
-            username,
-            email,
-            password
-        });
-
-        await user.save();
-
-        // Create JWT payload
-        const payload = {
-            userId: user._id,
-            username: user.username,
-            isAdmin: user.isAdmin
-        };
-
-        // Sign Token
-        jwt.sign(
-            payload,
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' },
-            (err, token) => {
-                if (err) throw err;
-                res.status(201).json({
-                    token,
-                    user: {
-                        id: user._id,
-                        username: user.username,
-                        email: user.email,
-                        isAdmin: user.isAdmin
-                    }
-                });
-            }
-        );
-
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+    if (!token) {
+        return res.status(401).json({ message: 'No token, authorization denied' });
     }
-});
-
-// Login User
-router.get('/login', (req, res) => {
-    res.json({ msg: 'This is the Login endpoint. Please use POST request with email and password.' });
-});
-
-router.post('/login', async (req, res) => {
-    const { email, password } = req.body;
 
     try {
-        // Check for user
-        const user = await User.findOne({ email });
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+
+        // Check if user exists and is not suspended
+        // Note: Ideally we should use the User model here, but circular dependency might be an issue if User requires auth?
+        // Let's require User model inside the function to be safe or at top level if fine.
+        // User model doesn't require auth middleware so it's fine.
+
+        // We will do a lightweight check.
+        // Importing User model at top level
+        const User = require('../models/User');
+        const user = await User.findById(decoded.userId).select('isSuspended isAdmin');
+
         if (!user) {
-            return res.status(400).json({ message: 'Invalid Credentials' });
+            return res.status(401).json({ message: 'User not found' });
         }
 
-        // Check if suspended
         if (user.isSuspended) {
-            return res.status(403).json({ message: 'Account Suspended. Please contact support.' });
+            return res.status(403).json({ message: 'Account Suspended' });
         }
 
-        // Check password
-        const isMatch = await user.comparePassword(password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid Credentials' });
-        }
+        // Update req.user with latest roles in case they changed
+        req.user.isAdmin = user.isAdmin;
+        req.user.isSuspended = user.isSuspended;
 
-        // Return JWT
-        const payload = {
-            userId: user._id,
-            username: user.username,
-            isAdmin: user.isAdmin
-        };
-
-        jwt.sign(
-            payload,
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' },
-            (err, token) => {
-                if (err) throw err;
-                res.json({
-                    token,
-                    user: {
-                        id: user._id,
-                        username: user.username,
-                        email: user.email,
-                        isAdmin: user.isAdmin
-                    }
-                });
-            }
-        );
+        next();
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+        res.status(401).json({ message: 'Token is not valid' });
     }
-});
+};
 
-module.exports = router;
+module.exports = auth;

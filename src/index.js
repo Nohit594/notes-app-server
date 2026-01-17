@@ -11,10 +11,40 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Database Connection
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('MongoDB connected successfully (v2)'))
-    .catch((err) => console.error('MongoDB connection error:', err));
+// Database Connection (Cached for Serverless)
+let cachedDb = null;
+
+const connectDB = async () => {
+    if (cachedDb) {
+        console.log('Using cached MongoDB connection');
+        return cachedDb;
+    }
+
+    try {
+        const conn = await mongoose.connect(process.env.MONGO_URI, {
+            serverSelectionTimeoutMS: 5000 // Fail fast if no connection
+        });
+        console.log('MongoDB connected successfully (New Connection)');
+        cachedDb = conn;
+        return conn;
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+        throw err;
+    }
+};
+
+// Connect immediately (for local dev) but also await in routes if needed (for lambda safety)
+connectDB();
+
+// Middleware to ensure DB is connected before handling requests
+app.use(async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (err) {
+        res.status(500).json({ msg: 'Database Connection Failed', error: err.message });
+    }
+});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
