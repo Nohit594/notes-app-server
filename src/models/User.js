@@ -9,6 +9,11 @@ const userSchema = new mongoose.Schema({
         trim: true,
         minlength: 3
     },
+    auth0Id: {
+        type: String,
+        sparse: true, // Unique if present
+        unique: true
+    },
     email: {
         type: String,
         required: true,
@@ -18,7 +23,7 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: true,
+        required: false, // Optional for Google Users
         minlength: 6
     },
     createdAt: {
